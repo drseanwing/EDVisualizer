@@ -3,32 +3,39 @@ version: "3.8"
 services:
   server:
     build:
-      context: "./backend"
+      context: ./backend
       dockerfile: Dockerfile
       args:
         - SERVER_PORT=${SERVER_PORT}
     environment:
       - FLASK_ENV=${DEV_ENV}
-      - SERVER_PORT=${SERVER_PORT}
-    # Only accessible locally; NGINX will reverse proxy.
+      - SERVER_PORT=${SERVER_PORT}        # set to 8009 in .env
+      # If your backend also reads APP_SERVER_PORT, keep it aligned:
+      # - APP_SERVER_PORT=${SERVER_PORT}
+    # Loopback-only: reached via host NGINX, not the internet
     ports:
-      - "127.0.0.1:5800:80"           # HTTP API (container listens on 80)
-      - "127.0.0.1:58765:8765"        # WebSocket service
-    # Do NOT mount source code in prod
-    # volumes: [ "./backend:/app" ]
+      - "127.0.0.1:5800:80"               # backend HTTP → NGINX /api
+      - "127.0.0.1:58765:8765"            # backend WebSocket → NGINX WS
+    # Backend writes files; keep RW unless you add writeable volumes below
     cap_drop: [ "ALL" ]
     security_opt: [ "no-new-privileges:true" ]
-    read_only: true
-    tmpfs:
-      - /tmp:rw,size=64m,mode=1777
     restart: unless-stopped
+
+    # OPTIONAL (use if you want server read-only + writeable dirs):
+    # read_only: true
+    # tmpfs:
+    #   - /tmp:rw,size=64m,mode=1777
+    # volumes:
+    #   - edv_csv:/app/backend/csv
+    #   - edv_canvas:/app/backend/canvas
 
   client:
     build:
-      context: "./frontend"
-      dockerfile: Dockerfile   # <- use the file you overwrote
+      context: ./frontend
+      dockerfile: Dockerfile               # your new Node16→nginx Dockerfile
+    # nginx in the image serves on :80
     ports:
-      - "127.0.0.1:5500:80"    # nginx in the image serves on 80
+      - "127.0.0.1:5500:80"                # frontend → NGINX /
     depends_on:
       - server
     cap_drop: [ "ALL" ]
@@ -38,28 +45,8 @@ services:
       - /var/cache/nginx
       - /var/run
     restart: unless-stopped
-  
-  client:
-    build:
-      context: "./frontend"
-      dockerfile: Dockerfile
-    environment:
-      - NODE_ENV=${DEV_ENV}
-      - REACT_APP_PORT=${REACT_APP_PORT}
-    # Frontend dev server serves on 3000 in the container
-    ports:
-      - "127.0.0.1:5500:3000"
-    depends_on:
-      - server
-    # No source mounts in prod
-    # volumes:
-    #   - './frontend:/app'
-    #   - '/app/node_modules'
-    cap_drop: [ "ALL" ]
-    security_opt: [ "no-new-privileges:true" ]
-    read_only: true
-    tmpfs:
-      - /tmp:rw,size=64m,mode=1777
-    restart: unless-stopped
 
-# Compose creates an isolated network by default
+# Uncomment if you enable the optional writeable volumes above
+# volumes:
+#   edv_csv:
+#   edv_canvas:
