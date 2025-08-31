@@ -26,6 +26,22 @@ services:
   client:
     build:
       context: "./frontend"
+      dockerfile: Dockerfile   # <- use the file you overwrote
+    ports:
+      - "127.0.0.1:5500:80"    # nginx in the image serves on 80
+    depends_on:
+      - server
+    cap_drop: [ "ALL" ]
+    security_opt: [ "no-new-privileges:true" ]
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    restart: unless-stopped
+  
+  client:
+    build:
+      context: "./frontend"
       dockerfile: Dockerfile
     environment:
       - NODE_ENV=${DEV_ENV}
