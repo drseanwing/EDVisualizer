@@ -1,35 +1,49 @@
-version: '3.6'
-services:
-    server:
-        build: 
-          context: "./backend"
-          dockerfile: Dockerfile
-          args:
-            - SERVER_PORT=${SERVER_PORT}
-        ports:
-            - "${SERVER_PORT}:80"
-            - "${WEB_SOCKET_PORT}:${WEB_SOCKET_PORT}"
-        environment: 
-            - FLASK_ENV=${DEV_ENV}
-            - SERVER_PORT=${SERVER_PORT}
-        volumes:
-            - "./backend:/app"
-        expose:
-            - ${SERVER_PORT}
+version: "3.8"
 
-    client:
-        build:
-          context: "./frontend"
-          dockerfile: Dockerfile
-        expose:
-          - ${REACT_APP_PORT}
-        volumes:
-          - './frontend:/app'
-          - '/app/node_modules'
-        ports:
-          - "${REACT_APP_PORT}:3000"
-        links:
-          - server
-        environment:
-          - NODE_ENV=${DEV_ENV}
-          - REACT_APP_PORT=${REACT_APP_PORT}
+services:
+  server:
+    build:
+      context: "./backend"
+      dockerfile: Dockerfile
+      args:
+        - SERVER_PORT=${SERVER_PORT}
+    environment:
+      - FLASK_ENV=${DEV_ENV}
+      - SERVER_PORT=${SERVER_PORT}
+    # Only accessible locally; NGINX will reverse proxy.
+    ports:
+      - "127.0.0.1:5800:80"           # HTTP API (container listens on 80)
+      - "127.0.0.1:58765:8765"        # WebSocket service
+    # Do NOT mount source code in prod
+    # volumes: [ "./backend:/app" ]
+    cap_drop: [ "ALL" ]
+    security_opt: [ "no-new-privileges:true" ]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=64m,mode=1777
+    restart: unless-stopped
+
+  client:
+    build:
+      context: "./frontend"
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=${DEV_ENV}
+      - REACT_APP_PORT=${REACT_APP_PORT}
+    # Frontend dev server serves on 3000 in the container
+    ports:
+      - "127.0.0.1:5500:3000"
+    depends_on:
+      - server
+    # No source mounts in prod
+    # volumes:
+    #   - './frontend:/app'
+    #   - '/app/node_modules'
+    cap_drop: [ "ALL" ]
+    security_opt: [ "no-new-privileges:true" ]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=64m,mode=1777
+    restart: unless-stopped
+
+# Compose creates an isolated network by default
