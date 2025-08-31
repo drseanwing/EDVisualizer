@@ -1,16 +1,29 @@
-# base image
-FROM node:12.2.0-alpine
-
-# set working directory
+# ----- Build stage (use Node 16 to avoid OpenSSL/webpack breakage) -----
+FROM node:16-bullseye AS build
 WORKDIR /app
 
-# add `/app/node_modules/.bin` to $PATH
-ENV PATH /app/node_modules/.bin:$PATH
+# Install deps from package.json/package-lock.json
+COPY package*.json ./
+RUN npm ci
 
-# install and cache app dependencies
-COPY package.json /app/package.json
-RUN npm install --silent
-RUN npm install react-scripts@3.0.1 -g --silent
+# Copy source and build
+COPY . .
+# Optional: make CRA non-interactive in CI
+ENV CI=true
+RUN npm run build
 
-# start app
-CMD ["npm", "start"]
+# ----- Serve stage (static files via nginx) -----
+FROM nginx:alpine
+# Basic SPA config: serve index.html for unknown paths
+RUN printf 'server { \
+  listen 80; \
+  server_name _; \
+  root /usr/share/nginx/html; \
+  index index.html; \
+  location / { try_files $uri /index.html; } \
+}\n' > /etc/nginx/conf.d/default.conf
+
+COPY --from=build /app/build /usr/share/nginx/html
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
